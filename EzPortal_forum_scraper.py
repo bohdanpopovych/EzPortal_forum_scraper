@@ -130,9 +130,10 @@ def prepare_page(_driver, _file, resource_dir='static'):
     for item in link_css_tags:
         link = item['href']
         abs_link = urljoin(http_domain, link)
-        file_name = unquote(abs_link.split('/')[-1].split('?')[0])
+        item_href = unquote(abs_link.split('/')[-1])
+        file_name = item_href.split('?')[0]
         links_css_tags_dict[abs_link] = file_name
-        item['href'] = '{}/{}'.format(resource_dir, file_name)
+        item['href'] = '{}/{}'.format(resource_dir, item_href)
 
     _file.write(str(head_soup))
 
@@ -163,9 +164,10 @@ def extract_page(_driver, resource_dir='static'):
     for item in img_tags:
         link = item['src']
         abs_link = urljoin(http_domain, link)
-        file_name = unquote(abs_link.split('/')[-1].split('?')[0])
+        item_src = unquote(abs_link.split('/')[-1])
+        file_name = item_src.split('?')[0]
         page_images_dict[abs_link] = file_name
-        item['src'] = '{}/{}'.format(resource_dir, file_name)
+        item['src'] = '{}/{}'.format(resource_dir, item_src)
 
     # save_resources(img_tags, 'src', http_domain, resource_dir)
 
