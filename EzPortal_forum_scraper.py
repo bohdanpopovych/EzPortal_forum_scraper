@@ -1,8 +1,9 @@
 import codecs
 import os
-import urllib
+
 from time import sleep
 from urllib.error import HTTPError
+from urllib.error import URLError
 from urllib.parse import unquote
 from urllib.parse import urljoin
 from urllib.request import urlparse
@@ -17,7 +18,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 # Config
-total_pages = 13
+total_pages = 2
 screen_prefix = 'page_'
 topic = 'http://artmusic.smfforfree.com/index.php/topic,2183'
 url_format = '{}.{}'
@@ -86,23 +87,24 @@ def login(username, password, _driver):
         pass
 
 
-def save_resources(soup, attribute_name, domain, dir):
-    for item in soup:
-        link = item[attribute_name]
-        abs_link = urljoin(domain, link)
-        file_name = unquote(abs_link.split('/')[-1].split('?')[0])
+def save_resources(img_dict, directory='static'):
+    def tab_print(string):
+        print('\t' + string)
+
+    for abs_link, file_name in img_dict.items():
+        tab_print('Retrieving {}...'.format(file_name))
 
         try:
-            urlretrieve(abs_link, '{}/{}'.format(dir, file_name))
-
-            item[attribute_name] = '{}/{}'.format(dir, file_name)
+            urlretrieve(abs_link, '{}/{}'.format(directory, file_name))
 
         except HTTPError:
             # If 404 - do not replace http path to local path
             pass
 
-        except urllib.error.URLError as e:
-            print('\t\tResource not availavle, skipping...\n\t\tDetails: ' + str(e))
+        except URLError as e:
+            print('\t\tResource not available, skipping...\n\t\tDetails: ' + str(e))
+
+        tab_print('Done!')
 
 
 def prepare_page(_driver, _file, resource_dir='static'):
@@ -118,12 +120,25 @@ def prepare_page(_driver, _file, resource_dir='static'):
 
     head_soup = BeautifulSoup(html_head, 'lxml')
 
+    # Removing <script> tag
+    [s.extract() for s in head_soup.findAll('script')]
+
     link_css_tags = head_soup.findAll('link', rel='stylesheet')
-    save_resources(link_css_tags, 'href', http_domain, resource_dir)
+
+    links_css_tags_dict = {}
+
+    for item in link_css_tags:
+        link = item['href']
+        abs_link = urljoin(http_domain, link)
+        file_name = unquote(abs_link.split('/')[-1].split('?')[0])
+        links_css_tags_dict[abs_link] = file_name
+        item['href'] = '{}/{}'.format(resource_dir, file_name)
 
     _file.write(str(head_soup))
 
     _file.write('<body>/n')
+
+    return links_css_tags_dict
 
 
 def finalize_page(_file):
@@ -142,19 +157,31 @@ def extract_page(_driver, resource_dir='static'):
     page_soup = BeautifulSoup(posts_table, 'lxml')
 
     img_tags = page_soup.findAll('img')
-    save_resources(img_tags, 'src', http_domain, resource_dir)
+
+    page_images_dict = {}
+
+    for item in img_tags:
+        link = item['src']
+        abs_link = urljoin(http_domain, link)
+        file_name = unquote(abs_link.split('/')[-1].split('?')[0])
+        page_images_dict[abs_link] = file_name
+        item['src'] = '{}/{}'.format(resource_dir, file_name)
+
+    # save_resources(img_tags, 'src', http_domain, resource_dir)
 
     # Removing <script> tag
     [s.extract() for s in page_soup.findAll('script')]
 
     # Converting HTML source to utf-8 to prevent 'UnicodeEncodeError' while writing to file
-    return str(page_soup.encode('utf-8', errors='replace').decode('utf-8', errors='replace'))
+    return str(page_soup.encode('utf-8', errors='replace').decode('utf-8', errors='replace')), page_images_dict
 
 
 # Temporary parameters
 page_num = 0
 scrapped_posts_count = 0
+resources_dict = {}
 url = url_format.format(topic, page_num)
+
 driver = webdriver.Firefox()
 
 # HACK: setting window size at the beginning,
@@ -169,10 +196,13 @@ print('Login successful!')
 
 # Preparing output files
 pages_file = codecs.open(pages_html, 'w', 'utf-8')
-prepare_page(driver, pages_file)
+
+new_css_dict = prepare_page(driver, pages_file)
+resources_dict = {**resources_dict, **new_css_dict}
 
 output_file = codecs.open(output_file_name, 'w', 'utf-8')
 output_file.write('id,\tpost:\n')
+
 
 for x in range(0, total_pages):
     url = url_format.format(topic, page_num)
@@ -186,8 +216,12 @@ for x in range(0, total_pages):
         print('\tDone!')
 
         print('\tExtracting posts HTML...')
-        page_html = extract_page(driver)
+        page_html, new_images_dict = extract_page(driver)
         pages_file.write(page_html)
+
+        # Adding new items to dict
+        resources_dict = {**resources_dict, **new_images_dict}
+
         print('\tDone!')
 
         print('\tScraping post content with BB codes...')
@@ -203,8 +237,11 @@ for x in range(0, total_pages):
         print('\tDone!')
 
         print('\tExtracting posts HTML...')
-        page_html = extract_page(driver)
+        page_html, new_images_dict = extract_page(driver)
         pages_file.write(page_html)
+
+        # Adding new items to dict
+        resources_dict = {**resources_dict, **new_images_dict}
         print('\tDone!')
 
         print('\tScraping post content with BB codes...')
@@ -212,6 +249,9 @@ for x in range(0, total_pages):
         print('\tDone!')
 
 driver.close()
+
+print('Downloading resources...')
+save_resources(resources_dict)
 
 finalize_page(pages_file)
 
