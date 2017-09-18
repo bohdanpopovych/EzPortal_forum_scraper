@@ -88,11 +88,12 @@ def login(username, password, _driver):
 
 
 def save_resources(img_dict, directory='static'):
-    def tab_print(string):
-        print('\t' + string)
+    resources_count = len(img_dict.keys())
+    i = 0
 
     for abs_link, file_name in img_dict.items():
-        tab_print('Retrieving {}...'.format(file_name))
+        print('Retrieving {}/{}'.format(i + 1, resources_count), end='\r')
+        i += 1
 
         try:
             urlretrieve(abs_link, '{}/{}'.format(directory, file_name))
@@ -102,9 +103,9 @@ def save_resources(img_dict, directory='static'):
             pass
 
         except URLError as e:
-            print('\t\tResource not available, skipping...\n\t\tDetails: ' + str(e))
+            print('Resource not available, skipping...\nDetails:\n' + str(e))
 
-        tab_print('Done!')
+    print('\nDone!')
 
 
 def prepare_page(_driver, _file, resource_dir='static'):
@@ -162,14 +163,16 @@ def extract_page(_driver, resource_dir='static'):
     page_images_dict = {}
 
     for item in img_tags:
-        link = item['src']
+        link = item.get('src')
+
+        if link is None:
+            continue
+
         abs_link = urljoin(http_domain, link)
         item_src = unquote(abs_link.split('/')[-1])
         file_name = item_src.split('?')[0]
         page_images_dict[abs_link] = file_name
         item['src'] = '{}/{}'.format(resource_dir, item_src)
-
-    # save_resources(img_tags, 'src', http_domain, resource_dir)
 
     # Removing <script> tag
     [s.extract() for s in page_soup.findAll('script')]
