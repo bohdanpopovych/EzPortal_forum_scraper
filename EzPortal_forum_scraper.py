@@ -1,4 +1,5 @@
 import codecs
+import datetime
 import os
 
 from time import sleep
@@ -9,6 +10,7 @@ from urllib.parse import urljoin
 from urllib.request import urlparse
 from urllib.request import urlretrieve
 
+import selenium
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
@@ -22,10 +24,43 @@ total_pages = 2
 screen_prefix = 'page_'
 topic = 'http://artmusic.smfforfree.com/index.php/topic,2183'
 url_format = '{}.{}'
-output_file_name = 'output.csv'
+csv_file_name = 'output.csv'
+json_file_name = 'json.json'
 pages_html = 'pages.html'
 user_login = 'username'
 user_password = 'password'
+write_to_csv = False
+write_to_json = False
+save_screenshots = False
+use_local_resources = True
+
+
+class ForumMessage:
+    def __init__(self, author, title, date, content):
+        self.author = str(author)
+        self.title = str(title)
+        self.date = str(date)
+        self.content = str(content)
+
+    def to_csv(self):
+        csv_string = '\t"{}",\t"{}",\t"{}",\t"{}"'.format(
+            self.author,
+            self.title,
+            self.date,
+            self.content
+        )
+
+        return csv_string
+
+    def to_json(self):
+        json_string = '{author:"{}", title:"{}", date:"{}", content:"{}"}'.format(
+            self.author,
+            self.title,
+            self.date,
+            self.content
+        )
+
+        return json_string
 
 
 def get_posts(_driver):
@@ -51,7 +86,21 @@ def get_posts(_driver):
             EC.presence_of_element_located((By.TAG_NAME, 'textarea'))
         )
 
-        results.append(_driver.find_element_by_tag_name('textarea').text)
+        _text = _driver.find_element_by_tag_name('textarea').text
+        metadata = _text[_text.index("[") + 1:_text.rindex("]")]
+
+        # Starting from 2nd character to cut out '[]'
+        message_text = _text.replace(metadata, '')[2:]
+
+        metadata_list = metadata.replace('quote ', '').split(' ')
+        message_author = metadata_list[0].split('=')[1]
+        message_date = datetime.datetime.fromtimestamp(
+            int(metadata_list[-1].split('=')[1])).strftime('%Y-%m-%d %H:%M:%S')
+        message_title = _driver.find_element_by_name('subject').get_attribute('value')
+
+        new_message = ForumMessage(message_author, message_title, message_date, message_text)
+
+        results.append(new_message)
 
         # Logging process
         print('\tPost: {}/{}'.format(i + 1, posts_count))
@@ -63,12 +112,17 @@ def get_posts(_driver):
     return results
 
 
-def print_posts(file, posts_list, count):
-    for post in posts_list:
+def print_posts(file, messages_list, count):
+    for message in messages_list:
         count += 1
-        file.write('{},\t"{}"\n'.format(count, post.encode('unicode_escape')))
+        file.write('{},"{}"\n'.format(count, message.to_csv().encode('unicode_escape')))
 
     return count
+
+
+def print_posts_json(file, messages_list):
+    for message in messages_list:
+        file.write(message.to_json())
 
 
 def login(username, password, _driver):
@@ -162,17 +216,18 @@ def extract_page(_driver, resource_dir='static'):
 
     page_images_dict = {}
 
-    for item in img_tags:
-        link = item.get('src')
+    if use_local_resources:
+        for item in img_tags:
+            link = item.get('src')
 
-        if link is None:
-            continue
+            if link is None:
+                continue
 
-        abs_link = urljoin(http_domain, link)
-        item_src = unquote(abs_link.split('/')[-1])
-        file_name = item_src.split('?')[0]
-        page_images_dict[abs_link] = file_name
-        item['src'] = '{}/{}'.format(resource_dir, item_src)
+            abs_link = urljoin(http_domain, link)
+            item_src = unquote(abs_link.split('/')[-1])
+            file_name = item_src.split('?')[0]
+            page_images_dict[abs_link] = file_name
+            item['src'] = '{}/{}'.format(resource_dir, item_src)
 
     # Removing <script> tag
     [s.extract() for s in page_soup.findAll('script')]
@@ -205,20 +260,27 @@ pages_file = codecs.open(pages_html, 'w', 'utf-8')
 new_css_dict = prepare_page(driver, pages_file)
 resources_dict = {**resources_dict, **new_css_dict}
 
-output_file = codecs.open(output_file_name, 'w', 'utf-8')
-output_file.write('id,\tpost:\n')
+csv_file = None
+json_file = None
 
+if write_to_csv:
+    csv_file = codecs.open(csv_file_name, 'w', 'utf-8')
+    csv_file.write('id,\tpost:\n')
+
+if write_to_json:
+    json_file = codecs.open(json_file_name, 'w', 'utf-8')
 
 for x in range(0, total_pages):
-    url = url_format.format(topic, page_num)
-    if page_num != 0:
+    try:
+        url = url_format.format(topic, page_num)
         print("Page: {}".format(x + 1))
         page_num += 15
         driver.get(url)
 
-        print('\tGetting screenshot...')
-        driver.save_screenshot('{}{}.png'.format(screen_prefix, x + 1))
-        print('\tDone!')
+        if save_screenshots:
+            print('\tGetting screenshot...')
+            driver.save_screenshot('{}{}.png'.format(screen_prefix, x + 1))
+            print('\tDone!')
 
         print('\tExtracting posts HTML...')
         page_html, new_images_dict = extract_page(driver)
@@ -229,38 +291,34 @@ for x in range(0, total_pages):
 
         print('\tDone!')
 
-        print('\tScraping post content with BB codes...')
-        scrapped_posts_count = print_posts(output_file, get_posts(driver), scrapped_posts_count)
-        print('\tDone!')
-    else:
-        print("Page: {}".format(x + 1))
-        driver.get(url)
-        page_num += 15
+        if write_to_csv:
+            print('\tScraping post content with BB codes to *.csv...')
+            scrapped_posts_count = print_posts(csv_file, get_posts(driver), scrapped_posts_count)
+            print('\tDone!')
 
-        print('\tGetting screenshot...')
-        driver.save_screenshot('{}{}.png'.format(screen_prefix, x + 1))
-        print('\tDone!')
+        if write_to_json:
+            print('\tScraping post content with BB codes to *.json...')
+            print_posts_json(json_file, get_posts(driver))
+            print('\tDone!')
 
-        print('\tExtracting posts HTML...')
-        page_html, new_images_dict = extract_page(driver)
-        pages_file.write(page_html)
-
-        # Adding new items to dict
-        resources_dict = {**resources_dict, **new_images_dict}
-        print('\tDone!')
-
-        print('\tScraping post content with BB codes...')
-        scrapped_posts_count = print_posts(output_file, get_posts(driver), scrapped_posts_count)
-        print('\tDone!')
+    except selenium.common.exceptions.TimeoutException:
+        print('Page loading timeout. Skipping page #', str(x + 1))
 
 driver.close()
 
-print('Downloading resources...')
-save_resources(resources_dict)
+if use_local_resources:
+    print('Downloading resources...')
+    save_resources(resources_dict)
+
 
 finalize_page(pages_file)
 
 pages_file.close()
-output_file.close()
+
+if write_to_csv:
+    csv_file.close()
+
+if write_to_json:
+    json_file.close()
 
 print('Scraping finished!')
