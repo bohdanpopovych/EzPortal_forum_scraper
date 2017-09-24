@@ -20,6 +20,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 # Config
+start_page = 0
 total_pages = 2
 screen_prefix = 'page_'
 topic = 'http://artmusic.smfforfree.com/index.php/topic,2183'
@@ -270,7 +271,7 @@ if write_to_csv:
 if write_to_json:
     json_file = codecs.open(json_file_name, 'w', 'utf-8')
 
-for x in range(0, total_pages):
+for x in range(start_page, total_pages):
     try:
         url = url_format.format(topic, page_num)
         print("Page: {}".format(x + 1))
