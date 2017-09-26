@@ -3,6 +3,10 @@ import datetime
 import os
 
 from time import sleep
+
+# Hack to avoid "urlopen error [Errno -2] Name or service not known"
+os.environ['http_proxy'] = ''
+
 from urllib.error import HTTPError
 from urllib.error import URLError
 from urllib.parse import unquote
@@ -21,7 +25,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 # Config
 start_page = 0
-total_pages = 2
+end_page = 2
 screen_prefix = 'page_'
 topic = 'http://artmusic.smfforfree.com/index.php/topic,2183'
 url_format = '{}.{}'
@@ -146,6 +150,12 @@ def save_resources(img_dict, directory='static'):
     resources_count = len(img_dict.keys())
     i = 0
 
+    with open('resources.csv', 'w') as res_file:
+        res_file.write('filename,\turl\n')
+
+        for key, value in img_dict.items():
+            res_file.write('{},\t{}\n'.format(value, key))
+
     for abs_link, file_name in img_dict.items():
         print('Retrieving {}/{}'.format(i + 1, resources_count), end='\r')
         i += 1
@@ -243,7 +253,7 @@ scrapped_posts_count = 0
 resources_dict = {}
 url = url_format.format(topic, page_num)
 
-driver = webdriver.Firefox()
+driver = webdriver.PhantomJS()
 
 # HACK: setting window size at the beginning,
 # since multiple calls of set_window_size hangs application(Selenium bug)
@@ -252,7 +262,7 @@ driver.set_window_size(1024, 768)
 driver.get(url)
 
 print('Logging in...')
-login(user_login, user_password, driver)
+#login(user_login, user_password, driver)
 print('Login successful!')
 
 # Preparing output files
@@ -271,7 +281,7 @@ if write_to_csv:
 if write_to_json:
     json_file = codecs.open(json_file_name, 'w', 'utf-8')
 
-for x in range(start_page, total_pages):
+for x in range(start_page, end_page):
     try:
         url = url_format.format(topic, page_num)
         print("Page: {}".format(x + 1))
@@ -310,7 +320,6 @@ driver.close()
 if use_local_resources:
     print('Downloading resources...')
     save_resources(resources_dict)
-
 
 finalize_page(pages_file)
 
