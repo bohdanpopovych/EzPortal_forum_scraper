@@ -31,6 +31,7 @@ topic = 'http://artmusic.smfforfree.com/index.php/topic,2183'
 url_format = '{}.{}'
 csv_file_name = 'output.csv'
 json_file_name = 'json.json'
+resources_list_file_name = 'resources.csv'
 pages_html = 'pages.html'
 user_login = 'username'
 user_password = 'password'
@@ -146,31 +147,12 @@ def login(username, password, _driver):
         pass
 
 
-def save_resources(img_dict, directory='static'):
-    resources_count = len(img_dict.keys())
-    i = 0
-
-    with open('resources.csv', 'w') as res_file:
-        res_file.write('filename,\turl\n')
+def save_resources_list(img_dict):
+    with open(resources_list_file_name, 'w') as res_file:
+        res_file.write('FileName,Url\n')
 
         for key, value in img_dict.items():
-            res_file.write('{},\t{}\n'.format(value, key))
-
-    for abs_link, file_name in img_dict.items():
-        print('Retrieving {}/{}'.format(i + 1, resources_count), end='\r')
-        i += 1
-
-        try:
-            urlretrieve(abs_link, '{}/{}'.format(directory, file_name))
-
-        except HTTPError:
-            # If 404 - do not replace http path to local path
-            pass
-
-        except URLError as e:
-            print('Resource not available, skipping...\nDetails:\n' + str(e))
-
-    print('\nDone!')
+            res_file.write('"{}","{}"\n'.format(value, key))
 
 
 def prepare_page(_driver, _file, resource_dir='static'):
@@ -262,7 +244,7 @@ driver.set_window_size(1024, 768)
 driver.get(url)
 
 print('Logging in...')
-#login(user_login, user_password, driver)
+login(user_login, user_password, driver)
 print('Login successful!')
 
 # Preparing output files
@@ -319,7 +301,7 @@ driver.close()
 
 if use_local_resources:
     print('Downloading resources...')
-    save_resources(resources_dict)
+    save_resources_list(resources_dict)
 
 finalize_page(pages_file)
 
