@@ -3,6 +3,10 @@ import datetime
 import os
 
 from time import sleep
+
+# Hack to avoid "urlopen error [Errno -2] Name or service not known"
+os.environ['http_proxy'] = ''
+
 from urllib.error import HTTPError
 from urllib.error import URLError
 from urllib.parse import unquote
@@ -10,6 +14,7 @@ from urllib.parse import urljoin
 from urllib.request import urlparse
 from urllib.request import urlretrieve
 
+import selenium
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
@@ -19,7 +24,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 # Config
-total_pages = 2
+start_page = 0
+end_page = 2
 screen_prefix = 'page_'
 topic = 'http://artmusic.smfforfree.com/index.php/topic,2183'
 url_format = '{}.{}'
@@ -30,6 +36,8 @@ user_login = 'username'
 user_password = 'password'
 write_to_csv = False
 write_to_json = False
+save_screenshots = False
+use_local_resources = True
 
 
 class ForumMessage:
@@ -142,6 +150,12 @@ def save_resources(img_dict, directory='static'):
     resources_count = len(img_dict.keys())
     i = 0
 
+    with open('resources.csv', 'w') as res_file:
+        res_file.write('filename,\turl\n')
+
+        for key, value in img_dict.items():
+            res_file.write('{},\t{}\n'.format(value, key))
+
     for abs_link, file_name in img_dict.items():
         print('Retrieving {}/{}'.format(i + 1, resources_count), end='\r')
         i += 1
@@ -213,17 +227,18 @@ def extract_page(_driver, resource_dir='static'):
 
     page_images_dict = {}
 
-    for item in img_tags:
-        link = item.get('src')
+    if use_local_resources:
+        for item in img_tags:
+            link = item.get('src')
 
-        if link is None:
-            continue
+            if link is None:
+                continue
 
-        abs_link = urljoin(http_domain, link)
-        item_src = unquote(abs_link.split('/')[-1])
-        file_name = item_src.split('?')[0]
-        page_images_dict[abs_link] = file_name
-        item['src'] = '{}/{}'.format(resource_dir, item_src)
+            abs_link = urljoin(http_domain, link)
+            item_src = unquote(abs_link.split('/')[-1])
+            file_name = item_src.split('?')[0]
+            page_images_dict[abs_link] = file_name
+            item['src'] = '{}/{}'.format(resource_dir, item_src)
 
     # Removing <script> tag
     [s.extract() for s in page_soup.findAll('script')]
@@ -238,7 +253,7 @@ scrapped_posts_count = 0
 resources_dict = {}
 url = url_format.format(topic, page_num)
 
-driver = webdriver.Firefox()
+driver = webdriver.PhantomJS()
 
 # HACK: setting window size at the beginning,
 # since multiple calls of set_window_size hangs application(Selenium bug)
@@ -247,7 +262,7 @@ driver.set_window_size(1024, 768)
 driver.get(url)
 
 print('Logging in...')
-login(user_login, user_password, driver)
+#login(user_login, user_password, driver)
 print('Login successful!')
 
 # Preparing output files
@@ -266,37 +281,45 @@ if write_to_csv:
 if write_to_json:
     json_file = codecs.open(json_file_name, 'w', 'utf-8')
 
-for x in range(0, total_pages):
-    url = url_format.format(topic, page_num)
-    print("Page: {}".format(x + 1))
-    page_num += 15
-    driver.get(url)
+for x in range(start_page, end_page):
+    try:
+        url = url_format.format(topic, page_num)
+        print("Page: {}".format(x + 1))
+        page_num += 15
+        driver.get(url)
 
-    print('\tGetting screenshot...')
-    driver.save_screenshot('{}{}.png'.format(screen_prefix, x + 1))
-    print('\tDone!')
+        if save_screenshots:
+            print('\tGetting screenshot...')
+            driver.save_screenshot('{}{}.png'.format(screen_prefix, x + 1))
+            print('\tDone!')
 
-    print('\tExtracting posts HTML...')
-    page_html, new_images_dict = extract_page(driver)
-    pages_file.write(page_html)
+        print('\tExtracting posts HTML...')
+        page_html, new_images_dict = extract_page(driver)
+        pages_file.write(page_html)
 
-    # Adding new items to dict
-    resources_dict = {**resources_dict, **new_images_dict}
+        # Adding new items to dict
+        resources_dict = {**resources_dict, **new_images_dict}
 
-    print('\tDone!')
+        print('\tDone!')
 
-    print('\tScraping post content with BB codes...')
-    if write_to_csv:
-        scrapped_posts_count = print_posts(csv_file, get_posts(driver), scrapped_posts_count)
+        if write_to_csv:
+            print('\tScraping post content with BB codes to *.csv...')
+            scrapped_posts_count = print_posts(csv_file, get_posts(driver), scrapped_posts_count)
+            print('\tDone!')
 
-    if write_to_json:
-        print_posts_json(json_file, get_posts(driver))
-    print('\tDone!')
+        if write_to_json:
+            print('\tScraping post content with BB codes to *.json...')
+            print_posts_json(json_file, get_posts(driver))
+            print('\tDone!')
+
+    except selenium.common.exceptions.TimeoutException:
+        print('Page loading timeout. Skipping page #', str(x + 1))
 
 driver.close()
 
-print('Downloading resources...')
-save_resources(resources_dict)
+if use_local_resources:
+    print('Downloading resources...')
+    save_resources(resources_dict)
 
 finalize_page(pages_file)
 
