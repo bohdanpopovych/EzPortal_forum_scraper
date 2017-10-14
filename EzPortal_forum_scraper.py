@@ -246,7 +246,7 @@ driver.set_window_size(1024, 768)
 driver.get(url)
 
 print('Logging in...')
-#login(user_login, user_password, driver)
+login(user_login, user_password, driver)
 print('Login successful!')
 
 
