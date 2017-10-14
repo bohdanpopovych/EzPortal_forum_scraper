@@ -187,7 +187,7 @@ def prepare_page(_driver, _file, resource_dir='static'):
 
     _file.write(str(head_soup))
 
-    _file.write('<body>/n')
+    _file.write('<body>\n')
 
     return links_css_tags_dict
 
@@ -246,7 +246,7 @@ driver.set_window_size(1024, 768)
 driver.get(url)
 
 print('Logging in...')
-login(user_login, user_password, driver)
+#login(user_login, user_password, driver)
 print('Login successful!')
 
 
@@ -273,7 +273,6 @@ for i in range(start_page, end_page):
     if use_paging:
         if i == 0 or pages_in_file_count == pages_per_file:
             if i > 0:
-                finalize_page(pages_file)
                 pages_file.close()
 
             pages_file = codecs.open('{}{}.html'.format(pages_prefix, files_count + 1), 'w', 'utf-8')
