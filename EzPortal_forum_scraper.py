@@ -297,6 +297,7 @@ for i in range(start_page, end_page):
 
         print('\tExtracting posts HTML...')
         page_html, new_images_dict = extract_page(driver)
+        # noinspection PyUnboundLocalVariable
         pages_file.write(page_html)
 
         # Adding new items to dict
@@ -324,6 +325,10 @@ driver.close()
 if use_local_resources:
     print('Saving resources list...')
     save_resources_list(resources_dict)
+
+if not use_paging:
+    finalize_page(pages_file)
+    pages_file.close()
 
 
 if write_to_csv:
