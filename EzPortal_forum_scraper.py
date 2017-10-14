@@ -25,20 +25,22 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 # Config
 start_page = 0
-end_page = 2
+end_page = 7
 screen_prefix = 'page_'
 topic = 'http://artmusic.smfforfree.com/index.php/topic,2183'
 url_format = '{}.{}'
 csv_file_name = 'output.csv'
 json_file_name = 'json.json'
 resources_list_file_name = 'resources.csv'
-pages_html = 'pages.html'
+pages_prefix = 'page_'
 user_login = 'username'
 user_password = 'password'
 write_to_csv = False
 write_to_json = False
 save_screenshots = False
 use_local_resources = True
+use_paging = True
+pages_per_file = 3
 
 
 class ForumMessage:
@@ -247,11 +249,12 @@ print('Logging in...')
 login(user_login, user_password, driver)
 print('Login successful!')
 
-# Preparing output files
-pages_file = codecs.open(pages_html, 'w', 'utf-8')
 
-new_css_dict = prepare_page(driver, pages_file)
-resources_dict = {**resources_dict, **new_css_dict}
+if not use_paging:
+    pages_file = codecs.open(pages_prefix + 'all.html', 'w', 'utf-8')
+
+    new_css_dict = prepare_page(driver, pages_file)
+    resources_dict = {**resources_dict, **new_css_dict}
 
 csv_file = None
 json_file = None
@@ -263,16 +266,33 @@ if write_to_csv:
 if write_to_json:
     json_file = codecs.open(json_file_name, 'w', 'utf-8')
 
-for x in range(start_page, end_page):
+pages_in_file_count = 0
+files_count = 0
+
+for i in range(start_page, end_page):
+    if use_paging:
+        if i == 0 or pages_in_file_count == pages_per_file:
+            if i > 0:
+                finalize_page(pages_file)
+                pages_file.close()
+
+            pages_file = codecs.open('{}{}.html'.format(pages_prefix, files_count + 1), 'w', 'utf-8')
+
+            new_css_dict = prepare_page(driver, pages_file)
+            resources_dict = {**resources_dict, **new_css_dict}
+
+            pages_in_file_count = 0
+            files_count += 1
+
     try:
         url = url_format.format(topic, page_num)
-        print("Page: {}".format(x + 1))
+        print("Page: {}".format(i + 1))
         page_num += 15
         driver.get(url)
 
         if save_screenshots:
             print('\tGetting screenshot...')
-            driver.save_screenshot('{}{}.png'.format(screen_prefix, x + 1))
+            driver.save_screenshot('{}{}.png'.format(screen_prefix, i + 1))
             print('\tDone!')
 
         print('\tExtracting posts HTML...')
@@ -294,18 +314,17 @@ for x in range(start_page, end_page):
             print_posts_json(json_file, get_posts(driver))
             print('\tDone!')
 
+        pages_in_file_count += 1
+
     except selenium.common.exceptions.TimeoutException:
-        print('Page loading timeout. Skipping page #', str(x + 1))
+        print('Page loading timeout. Skipping page #', str(i + 1))
 
 driver.close()
 
 if use_local_resources:
-    print('Downloading resources...')
+    print('Saving resources list...')
     save_resources_list(resources_dict)
 
-finalize_page(pages_file)
-
-pages_file.close()
 
 if write_to_csv:
     csv_file.close()
